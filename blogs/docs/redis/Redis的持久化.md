@@ -31,25 +31,25 @@ RDB持久化指的是在满足一定的触发条件时(在一个的时间间隔�
 在Redis默认的配置下，RDB是开启的，AOF持久化是关闭的。
 
 实现原理  
-(1) fork一个子进程，然后对键值对进行遍历，生成rdb文件；
+(1) fork一个子进程，然后对键值对进行遍历，生成rdb文件；  
 (2) 在生成过程中，父进程会继续处理客户端发送的请求，当父进程要对数据进行修改时，会对相关的内存页进行拷贝，修改的是拷贝后的数据。
 (也就是COPY ON WRITE，写时复制技术，就是当多个调用者同时请求同一个资源，如内存或磁盘上的数据存储，他们会共用同一个指向资源的指针，指向相同的资源，只有当一个调用者试图修改资源的内容时，系统才会真正复制一份专用副本给这个调用者，其他调用者还是使用最初的资源,在CopyOnWriteArrayList的实现中，也有用到，添加或者插入一个新元素时过程是，加锁，对原数组进行复制，然后添加新元素，然后替代旧数组，解锁）
 ```
-	//CopyOnWriteArrayList的添加元素的方法
-	public boolean add(E e) {
-        final ReentrantLock lock = this.lock;
-        lock.lock();
-        try {
-            Object[] elements = getArray();
-            int len = elements.length;
-            Object[] newElements = Arrays.copyOf(elements, len + 1);
-            newElements[len] = e;
-            setArray(newElements);
-            return true;
-        } finally {
-            lock.unlock();
-        }
-    }
+//CopyOnWriteArrayList的添加元素的方法
+public boolean add(E e) {
+   final ReentrantLock lock = this.lock;
+   lock.lock();
+   try {
+        Object[] elements = getArray();
+        int len = elements.length;
+        Object[] newElements = Arrays.copyOf(elements, len + 1);
+        newElements[len] = e;
+        setArray(newElements);
+        return true;
+   } finally {
+        lock.unlock();
+   }     
+}
 ```
 
 ### AOF和RDB对比
@@ -64,7 +64,7 @@ RDB持久化指的是在满足一定的触发条件时(在一个的时间间隔�
 (8) 以前AOF发生过bug，就是通过AOF记录的日志，进行数据恢复的时候，没有恢复一模一样的数据出来。所以说，类似AOF这种较为复杂的基于命令日志merge回放的方式，比基于RDB每次持久化一份完整的数据快照文件的方式，更加脆弱一些，容易有bug。不过AOF就是为了避免rewrite过程导致的bug，因此每次rewrite并不是基于旧的指令日志进行merge的，而是基于当时内存中的数据进行指令的重新构建，这样健壮性会好很多；   
 (9) Redis服务器故障重启后，默认恢复数据的方式首选是通过AOF文件恢复，其次是通过RDB文件恢复，因为AOF中的数据更加完整。
 
-**RDB优缺点** 
+**RDB优缺点**   
 (1) 保存某一个时间点的所有键值对信息，所以恢复时可能会丢失一部分数据，但是恢复效率会比较高；   
 (2) RDB会生成多个数据文件，每个数据文件都代表了某一个时刻中Redis的数据，这种多个数据文件的方式，非常适合做冷备，可以将这种完整的数据文件发送到一些远程的安全存储上去，比如说 Amazon 的 S3 云服务上去，在国内可以是阿里云的ODPS分布式存储上，以预定好的备份策略来定期备份Redis中的数据；  
 (3) RDB对Redis对外提供的读写服务，影响非常小，可以让Redis保持高性能。因为 Redis 主进程只需要fork一个子进程，让子进程执行磁盘IO操作来进行RDB持久化即可；  
@@ -107,7 +107,7 @@ AOF持久化主要在于将aof_buf缓冲区的数据同步到磁盘时会有I/O�
 如果系统中有自动拉起机制(即检测到服务停止后重启该服务)将master自动重启，由于没有持久化文件，那么master重启后数据是空的，slave同步数据也变成了空的。应尽量避免“自动拉起机制”和“不做持久化”同时出现。
 
 所以一般可以采用以下方案：  
-主服务器不开启持久化，使得主服务器性能更好。
+主服务器不开启持久化，使得主服务器性能更好。  
 从服务器开启AOF持久化，关闭RDB持久化，并且定时对AOF文件进行备份，以及在凌晨执行bgaofrewrite命令来进行AOF文件重写，减小AOF文件大小。（当然如果对数据丢失容忍度高也可以开启RDB持久化，关闭AOF持久化）
 
 4.异地灾备  

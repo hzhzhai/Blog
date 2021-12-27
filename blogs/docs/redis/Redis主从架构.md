@@ -4,11 +4,11 @@
 [复制的完整流程](#复制的完整流程) 
 
 ### Redis主从架构
-主从(master-slave)架构，一主多从，将数据复制到其它的slave节点，主节点负责写，从节点负责读。这样可以很轻松实现水平扩容，支撑读高并发。  
+主从(master-slave)架构，一主多从，将数据复制到slave节点，主节点负责写，从节点负责读。这样可以很轻松实现水平扩容，支撑读高并发。  
 ![](../../resources/redis/redis-master-slave.png)  
 Redis replication -> 主从架构 -> 读写分离 -> 水平扩容支撑读高并发
 
-### Redis replication的核心机制
+### 主从复制的核心机制
 - Redis采用异步方式复制数据到slave节点，不过Redis2.8开始，slave node会周期性地确认自己每次复制的数据量；
 - 一个master node是可以配置多个slave node的；
 - slave node也可以连接其他的slave node；
@@ -47,8 +47,10 @@ repl-diskless-sync-delay 5
 slave不会过期key，只会等待master过期key。如果master过期了一个key，或者通过LRU淘汰了一个key，那么会模拟一条del命令发送给slave。  
 
 ### 复制的完整流程
-slave node启动时，会在自己本地保存master node的信息，包括master node的host和ip，但是复制流程没开始。  
-slave node内部有个定时任务，每秒检查是否有新的master node要连接和复制，如果发现，就跟master node建立socket网络连接。然后slave node发送ping命令给master node。如果master设置了requirepass，那么slave node必须发送masterauth的口令过去进行认证。master node第一次执行全量复制，将所有数据发给slave node。而在后续，master node持续将写命令，异步复制给slave node。  
+(1) slave node启动时，会在自己本地保存master node的信息，包括master node的host和ip，但是复制流程没开始。  
+(2) slave node内部有个定时任务，每秒检查是否有新的master node要连接和复制，如果发现，就跟master node建立socket网络连接；  
+(3) 然后slave node发送ping命令给master node。如果master设置了requirepass，那么slave node必须发送masterauth的口令过去进行认证；  
+(4) master node第一次执行全量复制，将所有数据发给slave node。而在后续，master node持续将写命令异步复制给slave node。  
 ![](../../resources/redis/redis-master-slave-replication-detail.png)
 
 **全量复制**

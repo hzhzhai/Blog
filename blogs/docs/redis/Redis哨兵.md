@@ -3,7 +3,7 @@
 [哨兵集群的自动发现机制](#哨兵集群的自动发现机制)  
 [自动故障转移](#自动故障转移)  
 [quorum和majority](#quorum和majority)  
-[configuration epoch](#configuration epoch)  
+[configuration&emsp;epoch](#configuration&emsp;epoch)  
 [configuration传播](#configuration传播)  
 
 ### 哨兵介绍
@@ -66,7 +66,7 @@
 **(2) 脑裂导致的数据丢失**  
 脑裂，也就是说某个master所在机器突然脱离了正常的网络，跟其他slave机器不能连接，但是实际上master还运行着。此时哨兵可能就会认为master宕机了，然后开启选举，将其他slave切换成了master。这个时候，集群里就会有两个master，也就是所谓的脑裂。
 
-此时虽然某个slave被切换成了master，但是可能client还没来得及切换到新的master，还继续向旧master写数据。因此旧master再次恢复的时候，会被作为一个slave挂到新的master 上去，自己的数据会清空，重新从新的master复制数据。而新的master并没有后来client写入的数据，因此，这部分数据也就丢失了。
+此时虽然某个slave被切换成了master，但是可能client还没来得及切换到新的master，还继续向旧master写数据。因此旧master再次恢复的时候，会被作为一个slave挂到新的master 上去，自己的数据会清空，重新从新的master复制数据。而新的master并没有后来client写入的数据，因此，这部分数据也就丢失了。  
 ![](../../resources/redis/redis-cluster-split-brain.png)  
 
 **数据丢失问题的解决方案**  
@@ -84,9 +84,9 @@ min-slaves-max-lag 10 //数据复制和同步的延迟不能超过10秒
 如果一个master出现了脑裂，跟其他slave丢了连接，那么上面两个配置可以确保说，如果不能继续给指定数量的slave发送数据，而且slave超过10秒没有给自己ack消息，那么就直接拒绝客户端的写请求。因此在脑裂场景下，最多就丢失10秒的数据。
 
 ### 哨兵集群的自动发现机制
-(1) 哨兵互相之间的发现，是通过Redis的pub/sub系统实现的，每个哨兵都会往__sentinel__:hello这个channel里发送一个消息，这时候所有其他哨兵都可以消费到这个消息，并感知到其他的哨兵的存在。  
-(2) 每隔两秒钟，每个哨兵都会往自己监控的某个master+slaves对应的 __sentinel__:hello channel里发送一个消息，内容是自己的host、ip和runid，还有对这个 master 的监控配置。  
-(3) 每个哨兵也会去监听自己监控的每个master+slaves对应的 __sentinel__:hello channel，然后去感知到同样在监听这个master+slaves的其他哨兵的存在。  
+(1) 哨兵互相之间的发现，是通过Redis的pub/sub系统实现的，每个哨兵都会往sentinel:hello这个channel里发送一个消息，这时候所有其他哨兵都可以消费到这个消息，并感知到其他的哨兵的存在。  
+(2) 每隔两秒钟，每个哨兵都会往自己监控的某个master+slaves对应的sentinel:hello channel里发送一个消息，内容是自己的host、ip和runid，还有对这个 master 的监控配置。  
+(3) 每个哨兵也会去监听自己监控的每个master+slaves对应的sentinel:hello channel，然后去感知到同样在监听这个master+slaves的其他哨兵的存在。  
 (4) 每个哨兵还会跟其他哨兵交换对master的监控配置，互相进行监控配置的同步。
 
 ### 客户端是怎么接入哨兵系统的？

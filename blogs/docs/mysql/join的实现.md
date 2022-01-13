@@ -93,7 +93,7 @@ for( List<Row> subList in List<Row> t1){
 当使用BNLJ时，一次缓存的数据越多，那么外层表循环的次数就越少。  
 - 减少不必要的字段查询  
 当用到BNLJ时，字段越少，join buffer所缓存的数据就越多，外层表的循环次数就越少；  
-当用到INLJ时，如果可以不回表查询，即利用到覆盖索引，则可能可以提示速度。（未经验证，只是一个推论）
+当用到INLJ时，如果可以不回表查询，即利用到覆盖索引，则可能可以提升速度。（未经验证，只是一个推论）
 - 排序时尽量使用驱动表中的字段
 因为如果使用的是非驱动表中的字段进行排序，需要对循环查询的合并结果(临时表)进行排序，比较耗时。使用Explain时会发现出现Using temporary。
 
@@ -101,11 +101,11 @@ for( List<Row> subList in List<Row> t1){
 full outer join：会包含两个表不满足条件的行  
 left join：会包含左边的表不满足条件的行，一般会使用左边的表作为驱动表  
 right join：会包含右边的表不满足条件的行，一般会使用右边的表作为驱动表  
-inner join：就是只包含满足条件的行  
-cross join：从表A循环取出每一条记录去表B匹配，cross join 后面不能跟on，只能跟where
+inner join：只包含满足条件的行  
+cross join：从表A中循环取出每一条记录去表B匹配，cross join后面不能跟on，只能跟where
 
 **exits和in，join的区别**  
-exists是拿外表作为驱动表，外表的数据做循环，每次循环去内表中查询数据，适用内表比较大的情况
+exists是拿外表作为驱动表，外表的数据做循环，每次循环去内表中查询数据，适用内表比较大的情况。  
 例如
 ```mysql
 select * from t1 where t1.tid exists (select t2.tid from t2)
@@ -122,7 +122,7 @@ for(Row r1 in List<Row> t1){
 	}
 }
 ```
-而 in的话正好相反，是那内表作为驱动表，内表的数据做循环，每次循环去外表查询数据，适合内表比较小的情况。
+而in的话正好相反，是内表作为驱动表，内表的数据做循环，每次循环去外表查询数据，适合内表比较小的情况。
 ```mysql
 select * from A where cc in (select cc from B) 
 -- 效率低，用到了A表上cc列的索引；
@@ -130,10 +130,13 @@ select * from A where cc in (select cc from B)
 select * from A where exists(select cc from B where cc=A.cc) 
 -- 效率高，用到了B表上cc列的索引。
 ```
+
+join的实现其实是先从一个表中找出所有行(或者根据where子句查出符合条件的行)，然后去下一个表中循环寻找匹配的行，依次下去直到找到所有匹配的行。  
+使用join不会去创建临时表，使用in的话会创建临时表，销毁临时表。
+
+所以不管是in子查询，exists子查询还是join连接查询，底层的实现原理都是一样的，本质上是没有任何区别的，关键的点在关联表的顺序。  
+如果是join连接查询，MySQL会自动调整表之间的关联顺序，选择最好的一种关联方式。和上面in和exists比较的结论一样，小表驱动大表才是最优的选择方式。
+
 **not in和not exists的区别**   
 如果查询语句使用了not in，那么内外表都进行全表扫描，没有用到索引；  
-而not extsts的子查询依然能用到表上的索引。所以无论那个表大，用not exists都比not in要快。
-
-join的实现其实是先从一个表中找出所有行(或者根据where子句查出符合条件的行)，然后去下一个表中循环寻找匹配的行，依次下去，直到找到所有匹配的行，使用join不会去创建临时表，使用in的话会创建临时表，销毁临时表
-
-所以不管是in子查询，exists子查询还是join连接查询，底层的实现原理都是一样的，本质上是没有任何区别的，关键的点在关联表的顺序，如果是join连接查询，MySQL会自动调整表之间的关联顺序，选择最好的一种关联方式。和上面in和exists比较的结论一样，小表驱动大表才是最优的选择方式。
+而not exists的子查询依然能用到表上的索引。所以无论那个表大，用not exists都比not in要快。

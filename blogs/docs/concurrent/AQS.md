@@ -5,6 +5,7 @@
 
 ### AQS简介
 AbstractQueuedSynchronizer，抽象队列同步器，简称为AQS，是构建阻塞锁或者其他相关同步器的基础框架，是Java并发包的基础工具类。通过AQS这个框架可以对同步状态原子性管理、线程的阻塞和解除阻塞、队列的管理进行统一管理。  
+
 AQS是抽象类，并不能直接实例化。  
 当需要使用AQS的时候需要继承AQS抽象类并且重写指定的方法，这些方法包括线程获取资源和释放资源的方式(如ReentractLock通过分别重写线程获取和释放资源的方式实现了公平锁和非公平锁)。  
 同时子类还需要负责共享变量state的维护，如当state为0时表示该锁没有被占，大于0时候代表该锁被一个或多个线程占领(重入锁)，而队列的维护(获取资源失败入队、线程唤醒、线程的状态等)不需要我们考虑，AQS已经帮我们实现好了。  
@@ -31,8 +32,8 @@ private transient volatile Node tail;
 //之所以说大于0，而不是等于1，是因为锁可以重入，每次重入都加上1
 private volatile int state;
 
-//代表当前持有独占锁的线程，举个最重要的使用例子，因为锁可以重入
-//reentrantLock.lock()可以嵌套调用多次，所以每次用这个来判断当前线程是否已经拥有了锁
+//代表当前持有独占锁的线程。举个最重要的使用例子：
+//因为锁可以重入，reentrantLock.lock()可以嵌套调用多次，所以每次用这个来判断当前线程是否已经拥有了锁
 //if(currentThread == getExclusiveOwnerThread()) {state++}
 private transient Thread exclusiveOwnerThread; //继承自AbstractOwnableSynchronizer
 ```
@@ -48,11 +49,12 @@ static final class Node {
     static final int CANCELLED = 1;
     //代表当前节点(线程)的后继节点在等待当前结点唤醒。后继结点入队时，会将前继结点的状态更新为SIGNAL。
     static final int SIGNAL = -1;
-    //代表节点(线程)在Condition queue中。当其他线程调用了Condition的signal()方法后，CONDITION状态的结点将从等待队列转移到同步队列中，等待获取同步锁。
+    //代表节点(线程)在Condition queue中。
+    // 当其他线程调用了Condition的signal()方法后，CONDITION状态的结点将从等待队列转移到同步队列中，等待获取同步锁。
     static final int CONDITION = -2;
     //代表当前节点的后继节点(线程)会传播唤醒的操作，仅在共享模式下才有作用
     static final int PROPAGATE = -3;
-    //代表当前节点的状态，它的取值除了以上说的CANCELLED、SIGNAL、CONDITION、PROPAGATE，同时
+    //代表当前节点的状态，它的取值除了以上的CANCELLED、SIGNAL、CONDITION、PROPAGATE，同时
     //还可能为0(新结点入队时的默认状态)，代表当前节点在sync队列中，阻塞着排队获取锁。
     //注意，负值表示结点处于有效等待状态，而正值表示结点已被取消。所以源码中很多地方用>0、<0来判断结点的状态是否正常。
     volatile int waitStatus;
@@ -70,7 +72,7 @@ static final class Node {
         return nextWaiter == SHARED;
     }
     
-    //返回当前节点的前驱节点 没有前驱节点则抛出异常
+    //返回当前节点的前驱节点，没有前驱节点则抛出异常
     final Node predecessor() throws NullPointerException {
         Node p = prev;
         if (p == null)
@@ -83,7 +85,8 @@ static final class Node {
 
 ### 框架
 ![](../../resources/concurrent/AQS.png)  
-它维护了一个volatile int state(代表共享资源)和一个FIFO线程等待队列(多线程争用资源被阻塞时会进入此队列)。  
+它维护了一个**volatile** int state(代表共享资源)和一个FIFO线程等待队列(多线程争用资源被阻塞时会进入此队列)。  
+
 state的访问方式有三种:
 - getState()
 - setState()
@@ -93,27 +96,29 @@ AQS定义两种资源共享方式：
 - Exclusive(独占，只有一个线程能执行，如ReentrantLock)
 - Share(共享，多个线程可同时执行，如Semaphore/CountDownLatch)
 
-不同的自定义同步器争用共享资源的方式也不同，在实现时只需要实现共享资源state的获取与释放方式即。至于具体线程等待队列的维护(如获取资源失败入队/唤醒出队等)，AQS已经在顶层实现好了。  
+不同的自定义同步器争用共享资源的方式也不同，在实现时只需要实现共享资源state的获取与释放方式即可。至于具体线程等待队列的维护(如获取资源失败入队/唤醒出队等)，AQS已经在顶层实现好了。  
+
 自定义同步器实现时主要实现以下几种方法：
 - isHeldExclusively()：该线程是否正在独占资源。只有用到condition才需要去实现它。
-- tryAcquire(int)：独占方式。尝试获取资源，成功则返回true，失败则返回false。
-- tryRelease(int)：独占方式。尝试释放资源，成功则返回true，失败则返回false。
+- tryAcquire(int)：独占方式。尝试获取资源，成功返回true，失败则返回false。
+- tryRelease(int)：独占方式。尝试释放资源，成功返回true，失败则返回false。
 - tryAcquireShared(int)：共享方式。尝试获取资源。负数表示失败；0表示成功，但没有剩余可用资源；正数表示成功，且有剩余资源。
 - tryReleaseShared(int)：共享方式。尝试释放资源，如果释放后允许唤醒后续等待结点返回true，否则返回false。
 
-以ReentrantLock为例，state初始化为0，表示未锁定状态。A线程lock()时，会调用tryAcquire()独占该锁并将state+1。此后，其他线程再tryAcquire()时就会失败，直到A线程unlock()到state=0（即释放锁）为止，其它线程才有机会获取该锁。当然，释放锁之前，A线程自己是可以重复获取此锁的（state会累加），这就是可重入的概念。但要注意，获取多少次就要释放多么次，这样才能保证state是能回到零态的。
+以ReentrantLock为例，state初始化为0，表示未锁定状态。A线程lock()时，会调用tryAcquire()独占该锁并将state+1。此后，其他线程再tryAcquire()时就会失败，直到A线程unlock()到state=0(即释放锁)为止，其它线程才有机会获取该锁。当然，释放锁之前，A线程自己是可以重复获取此锁的(state会累加)，这就是可重入的概念。但要注意，获取多少次就要释放多么次，这样才能保证state是能回到零态的。  
+
 再以CountDownLatch以例，任务分为N个子线程去执行，state也初始化为N(注意N要与线程个数一致)。这N个子线程是并行执行的，每个子线程执行完后countDown()一次，state会CAS减1。等到所有子线程都执行完后(即state=0)，会unpark()主调用线程，然后主调用线程就会从await()函数返回，继续后余动作。
 
-一般来说，自定义同步器要么是独占方法，要么是共享方式，他们也只需实现tryAcquire-tryRelease、tryAcquireShared-tryReleaseShared中的一种即可。但AQS也支持自定义同步器同时实现独占和共享两种方式，如ReentrantReadWriteLock。
+一般来说，自定义同步器要么是独占方式，要么是共享方式，他们也只需实现tryAcquire-tryRelease、tryAcquireShared-tryReleaseShared中的一种即可。但AQS也支持自定义同步器同时实现独占和共享两种方式，如ReentrantReadWriteLock。
 
 ### 独占模式
 独占模式即一个线程获取到资源后，其他线程不能再对资源进行任何操作，只能阻塞获得资源。
 ![](../../resources/concurrent/EXCLUSIVE.png)  
 
-**获取资源**
-(1)线程调用子类重写的tryAcquire方法获取资源，如果获取成功，则流程结束，否则继续往下执行。
-(2)调用addWaiter方法(详细过程看下面的源码解析)，将该线程封装成Node节点，并添加到队列队尾。
-(3)调用acquireQueued方法让节点以”死循环”方式进行获取资源，为什么死循环加了双引号呢？因为循环并不是一直让节点无间断的去获取资源，节点会经历 获取资源->失败->线程进入等待状态->唤醒->获取资源……，线程在死循环的过程会不断等待和唤醒，节点进入到自旋状态(详细过程看下面的源码解析)，再循环过程中还会将标识为取消的前驱节点移除队列，同时标识前驱节点状态为SIGNAL。
+**获取资源**  
+(1)线程调用子类重写的tryAcquire方法获取资源，如果获取成功，则流程结束，否则继续往下执行。  
+(2)调用addWaiter方法(详细过程看下面的源码解析)，将该线程封装成Node节点，并添加到队列队尾。  
+(3)调用acquireQueued方法让节点以”死循环”方式进行获取资源，为什么死循环加了双引号呢？因为循环并不是一直让节点无间断的去获取资源，节点会经历 获取资源->失败->线程进入等待状态->唤醒->获取资源……，线程在死循环的过程会不断等待和唤醒，节点进入到自旋状态(详细过程看下面的源码解析)，再循环过程中还会将标识为取消的前驱节点移除队列，同时标识前驱节点状态为SIGNAL。  
 线程的等待状态是通过调用LockSupport.lock()方法实现的，这个方法会响应Thread.interrupt，但是不会抛出InterruptedException异常，这点与Thread.sleep、Thread.wait不一样。
 ```java
 /**
@@ -264,8 +269,8 @@ private final boolean parkAndCheckInterrupt() {
 */
 ```
 
-**释放资源**
-(1)线程调用子类重写的tryRelease方法进行释放资源，如果释放成功则继续检查线程(节点)是否有后继节点，有后继几点则去唤醒。
+**释放资源**  
+(1)线程调用子类重写的tryRelease方法进行释放资源，如果释放成功则继续检查线程(节点)是否有后继节点，有后继几点则去唤醒。  
 (2)调用unparkSuccessor方法进行后继节点的唤醒，如果后继节点为取消状态，则从队列的队尾往前遍历，找到一个离节点最近且不为取消状态的节点进行唤醒，如果后继节点不为取消状态则直接唤醒。
 ```java
 /**
